@@ -1,57 +1,264 @@
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { decodeGB7, encodeGB7 } from './utils/gb7'
+import { snapZoom, calcFitZoom, ZOOM_PRESETS } from './utils/zoom'
 import './App.css'
 
-function App() {
+export default function App() {
+  const [image, setImage] = useState({
+    bitmap: null, data: null,
+    width: null, height: null,
+    colorDepth: null, fileName: null,
+  })
+  const [error, setError] = useState(null)
+  const [zoom, setZoom] = useState(100)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [openMenu, setOpenMenu] = useState(null)
+
+  const canvasRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const scrollRef = useRef(null)
+  const zoomRef = useRef(100)
+  const prevZoomRef = useRef(100)
+
+  // free GPU bitmap on replace
+  useEffect(() => {
+    const bmp = image.bitmap
+    return () => { bmp?.close() }
+  }, [image.bitmap])
+
+  // redraw canvas when bitmap or pixels change
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !image.bitmap) return
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const w = image.width, h = image.height
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
+    }
+    ctx.clearRect(0, 0, w, h)
+    ctx.drawImage(image.bitmap, 0, 0)
+  }, [image.bitmap, image.width, image.height])
+
+  // keep scroll centered when zoom changes
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const prev = prevZoomRef.current
+    if (prev === zoom) return
+    const ratio = zoom / prev
+    const cx = el.scrollLeft + el.clientWidth / 2
+    const cy = el.scrollTop + el.clientHeight / 2
+    el.scrollLeft = cx * ratio - el.clientWidth / 2
+    el.scrollTop = cy * ratio - el.clientHeight / 2
+    prevZoomRef.current = zoom
+    zoomRef.current = zoom
+  }, [zoom])
+
+  // ctrl+wheel zoom
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const handler = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom(z => {
+        const next = snapZoom(z, e.deltaY > 0 ? 'out' : 'in')
+        zoomRef.current = next
+        return next
+      })
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
+
+  // close menu on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.target.closest('.menubar')) setOpenMenu(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const processFile = useCallback(async (file) => {
+    if (!file) return
+    setError(null)
+    const ext = file.name.split('.').pop().toLowerCase()
+
+    if (ext === 'gb7') {
+      try {
+        const buffer = await file.arrayBuffer()
+        const { imageData, colorDepth } = decodeGB7(buffer)
+        const bitmap = await createImageBitmap(imageData)
+        const fitZoom = calcFitZoom(imageData.width, imageData.height)
+        setImage({ bitmap, data: imageData, width: imageData.width, height: imageData.height, colorDepth, fileName: file.name })
+        setZoom(fitZoom)
+      } catch (e) {
+        setError(e.message)
+      }
+      return
+    }
+
+    if (ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg') {
+      setError('Поддерживаются форматы PNG, JPG и GB7')
+      return
+    }
+
+    try {
+      const bitmap = await createImageBitmap(file)
+      const colorDepth = ext === 'jpg' || ext === 'jpeg' ? 24 : 32
+      const fitZoom = calcFitZoom(bitmap.width, bitmap.height)
+      setImage({ bitmap, data: null, width: bitmap.width, height: bitmap.height, colorDepth, fileName: file.name })
+      setZoom(fitZoom)
+    } catch {
+      setError('Не удалось декодировать изображение')
+    }
+  }, [])
+
+  const handleFileInput = (e) => {
+    processFile(e.target.files[0])
+    e.target.value = ''
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    processFile(e.dataTransfer.files[0])
+  }
+
+  const downloadBlob = (blob, name) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = name; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const baseName = () => (image.fileName?.replace(/\.[^.]+$/, '') ?? 'image')
+
+  const saveAsPNG = useCallback(() => {
+    if (!image.bitmap) return
+    const c = document.createElement('canvas')
+    c.width = image.width; c.height = image.height
+    c.getContext('2d').drawImage(image.bitmap, 0, 0)
+    c.toBlob(blob => blob && downloadBlob(blob, baseName() + '.png'), 'image/png')
+    setOpenMenu(null)
+  }, [image])
+
+  const saveAsJPG = useCallback(() => {
+    if (!image.bitmap) return
+    const c = document.createElement('canvas')
+    c.width = image.width; c.height = image.height
+    c.getContext('2d').drawImage(image.bitmap, 0, 0)
+    c.toBlob(blob => blob && downloadBlob(blob, baseName() + '.jpg'), 'image/jpeg', 0.95)
+    setOpenMenu(null)
+  }, [image])
+
+  const saveAsGB7 = useCallback(async () => {
+    if (!image.bitmap) return
+    let pixels = image.data
+    if (!pixels) {
+      const c = document.createElement('canvas')
+      c.width = image.width; c.height = image.height
+      c.getContext('2d', { willReadFrequently: true }).drawImage(image.bitmap, 0, 0)
+      pixels = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height)
+    }
+    const bytes = encodeGB7(pixels)
+    downloadBlob(new Blob([bytes.buffer], { type: 'application/octet-stream' }), baseName() + '.gb7')
+    setOpenMenu(null)
+  }, [image])
+
+  const hasImage = !!image.bitmap
+  const scale = zoom / 100
+  const zoomOptions = ZOOM_PRESETS.includes(zoom) ? ZOOM_PRESETS : [...ZOOM_PRESETS, zoom].sort((a, b) => a - b)
+
   return (
     <div className="app">
-      <div className="toolbar">
-        <div className="toolbar-icon" title="Move">V</div>
-        <div className="toolbar-icon" title="Marquee">M</div>
-        <div className="toolbar-icon" title="Lasso">L</div>
-        <div className="toolbar-icon" title="Crop">C</div>
-        <div className="toolbar-icon" title="Brush">B</div>
-        <div className="toolbar-icon" title="Eraser">E</div>
-        <div className="toolbar-icon" title="Text">T</div>
-        <div className="toolbar-icon" title="Zoom">Z</div>
+      <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gb7" onChange={handleFileInput} style={{ display: 'none' }} />
+
+      {/* MenuBar */}
+      <nav className="menubar">
+        <div className="menu-item">
+          <button className={`menu-btn${openMenu === 'file' ? ' active' : ''}`} onClick={() => setOpenMenu(v => v === 'file' ? null : 'file')}>
+            Файл
+          </button>
+          {openMenu === 'file' && (
+            <div className="dropdown">
+              <button className="dd-item" onClick={() => { fileInputRef.current.click(); setOpenMenu(null) }}>
+                Открыть…
+              </button>
+              <div className="dd-sep" />
+              <button className="dd-item" disabled={!hasImage} onClick={saveAsPNG}>Сохранить как PNG</button>
+              <button className="dd-item" disabled={!hasImage} onClick={saveAsJPG}>Сохранить как JPG</button>
+              <button className="dd-item" disabled={!hasImage} onClick={saveAsGB7}>Сохранить как GB7</button>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* Canvas area */}
+      <div
+        className={`canvas-area${isDragOver ? ' drag-over' : ''}`}
+        onDragOver={e => { e.preventDefault(); setIsDragOver(true) }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false) }}
+        onDrop={handleDrop}
+      >
+        {error && <div className="error-toast">{error}</div>}
+
+        <div className="canvas-scroll" ref={scrollRef}>
+          {hasImage ? (
+            <div className="canvas-wrapper" style={{ width: image.width * scale, height: image.height * scale }}>
+              <canvas
+                ref={canvasRef}
+                style={{ width: image.width * scale, height: image.height * scale }}
+              />
+            </div>
+          ) : (
+            <div className="empty-state" onClick={() => fileInputRef.current.click()}>
+              <svg className="empty-icon" viewBox="0 0 64 64" fill="none">
+                <rect x="8" y="10" width="48" height="40" rx="2" stroke="#5a5a5a" strokeWidth="1.5"/>
+                <path d="M8 38l14-14 10 10 8-8 16 14" stroke="#5a5a5a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="22" cy="24" r="4" stroke="#5a5a5a" strokeWidth="1.5"/>
+              </svg>
+              <p className="empty-title">Изображение не открыто</p>
+              <p className="empty-hint">Перетащите файл сюда или используйте <strong>Файл → Открыть</strong></p>
+              <p className="empty-formats">PNG · JPG · GB7</p>
+            </div>
+          )}
+        </div>
+
+        {isDragOver && (
+          <div className="drop-overlay">
+            <p>Отпустите для открытия</p>
+          </div>
+        )}
       </div>
 
-      <div className="main">
-        <div className="menubar">
-          {['File', 'Edit', 'Image', 'Layer', 'Select', 'Filter', 'View', 'Help'].map(item => (
-            <span key={item} className="menu-item">{item}</span>
-          ))}
+      {/* StatusBar */}
+      <footer className="statusbar">
+        <div className="status-left">
+          {hasImage ? (
+            <>
+              <span className="status-item">{image.fileName}</span>
+              <span className="status-sep">|</span>
+              <span className="status-item">{image.width} × {image.height} пкс</span>
+              <span className="status-sep">|</span>
+              <span className="status-item">{image.colorDepth} бит</span>
+            </>
+          ) : (
+            <span className="status-hint">Откройте изображение для начала работы</span>
+          )}
         </div>
-
-        <div className="workspace">
-          <div className="canvas-area">
-            <div className="canvas-placeholder">
-              <span>Open an image to start</span>
-            </div>
-          </div>
-
-          <div className="panels">
-            <div className="panel">
-              <div className="panel-header">Layers</div>
-              <div className="panel-body">
-                <div className="layer active">Background</div>
-              </div>
-            </div>
-            <div className="panel">
-              <div className="panel-header">Properties</div>
-              <div className="panel-body">
-                <div className="prop-row"><span>W:</span><span>—</span></div>
-                <div className="prop-row"><span>H:</span><span>—</span></div>
-              </div>
-            </div>
-          </div>
+        <div className="status-right">
+          <select
+            className="zoom-select"
+            value={zoom}
+            onChange={e => setZoom(Number(e.target.value))}
+          >
+            {zoomOptions.map(z => <option key={z} value={z}>{z}%</option>)}
+          </select>
         </div>
-
-        <div className="statusbar">
-          <span>Ready</span>
-          <span>Width: — &nbsp;|&nbsp; Height: — &nbsp;|&nbsp; Color Depth: —</span>
-        </div>
-      </div>
+      </footer>
     </div>
   )
 }
-
-export default App
