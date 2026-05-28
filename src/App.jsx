@@ -20,13 +20,11 @@ export default function App() {
   const zoomRef = useRef(100)
   const prevZoomRef = useRef(100)
 
-  // free GPU bitmap on replace
   useEffect(() => {
     const bmp = image.bitmap
     return () => { bmp?.close() }
   }, [image.bitmap])
 
-  // redraw canvas when bitmap or pixels change
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !image.bitmap) return
@@ -40,7 +38,6 @@ export default function App() {
     ctx.drawImage(image.bitmap, 0, 0)
   }, [image.bitmap, image.width, image.height])
 
-  // keep scroll centered when zoom changes
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -55,7 +52,6 @@ export default function App() {
     zoomRef.current = zoom
   }, [zoom])
 
-  // ctrl+wheel zoom
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -72,7 +68,6 @@ export default function App() {
     return () => el.removeEventListener('wheel', handler)
   }, [])
 
-  // close menu on outside click
   useEffect(() => {
     const handler = (e) => {
       if (!e.target.closest('.menubar')) setOpenMenu(null)
