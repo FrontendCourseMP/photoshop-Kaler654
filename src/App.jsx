@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { decodeGB7, encodeGB7 } from './utils/gb7'
 import { snapZoom, calcFitZoom, ZOOM_PRESETS } from './utils/zoom'
 import { getChannelIds, applyChannelMask } from './utils/colorChannels'
+import { rgbToLab } from './utils/colorConvert'
 import ChannelsPanel from './components/ChannelsPanel'
 import './App.css'
 
@@ -24,6 +25,8 @@ export default function App() {
   const [isDragOver, setIsDragOver] = useState(false)
   const [openMenu, setOpenMenu] = useState(null)
   const [activeChannels, setActiveChannels] = useState(new Set())
+  const [activeTool, setActiveTool] = useState(null)
+  const [pickedPixel, setPickedPixel] = useState(null)
 
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -105,6 +108,7 @@ export default function App() {
         const bitmap = await createImageBitmap(imageData)
         const fitZoom = calcFitZoom(imageData.width, imageData.height)
         setActiveChannels(new Set(getChannelIds(colorDepth)))
+        setPickedPixel(null)
         setImage({ bitmap, data: imageData, width: imageData.width, height: imageData.height, colorDepth, fileName: file.name })
         setZoom(fitZoom)
       } catch (e) {
@@ -124,6 +128,7 @@ export default function App() {
       const colorDepth = ext === 'jpg' || ext === 'jpeg' ? 24 : 32
       const fitZoom = calcFitZoom(width, height)
       setActiveChannels(new Set(getChannelIds(colorDepth)))
+      setPickedPixel(null)
       setImage({ bitmap, data: null, width, height, colorDepth, fileName: file.name })
       setZoom(fitZoom)
     } catch {
@@ -167,6 +172,20 @@ export default function App() {
     downloadBlob(new Blob([encodeGB7(pixels).buffer], { type: 'application/octet-stream' }), baseName() + '.gb7')
     setOpenMenu(null)
   }, [image])
+
+  const handleCanvasClick = useCallback((e) => {
+    if (activeTool !== 'eyedropper' || !image.bitmap) return
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    const x = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) * (image.width / rect.width)), image.width - 1))
+    const y = Math.max(0, Math.min(Math.floor((e.clientY - rect.top) * (image.height / rect.height)), image.height - 1))
+    const data = image.data ?? extractImageData(image.bitmap, image.width, image.height)
+    if (!image.data) setImage(prev => ({ ...prev, data }))
+    const idx = (y * image.width + x) * 4
+    const d = data.data
+    const r = d[idx], g = d[idx + 1], b = d[idx + 2], a = d[idx + 3]
+    setPickedPixel({ x, y, r, g, b, a, lab: rgbToLab(r, g, b) })
+  }, [activeTool, image])
 
   const toggleChannel = useCallback((channelId) => {
     const doToggle = () => {
@@ -214,6 +233,20 @@ export default function App() {
       </nav>
 
       <div className="workspace">
+        <div className="toolbar">
+          <button
+            className={`tool-btn${activeTool === 'eyedropper' ? ' tool-active' : ''}`}
+            onClick={() => setActiveTool(v => v === 'eyedropper' ? null : 'eyedropper')}
+            title="Пипетка"
+          >
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d="M14.5 2.5L17.5 5.5L9 14L6 14L6 11L14.5 2.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+              <path d="M12 5L15 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              <circle cx="4.5" cy="15.5" r="1.5" stroke="currentColor" strokeWidth="1.3"/>
+            </svg>
+          </button>
+        </div>
+
         <div
           className={`canvas-area${isDragOver ? ' drag-over' : ''}`}
           onDragOver={e => { e.preventDefault(); setIsDragOver(true) }}
@@ -224,7 +257,11 @@ export default function App() {
           <div className="canvas-scroll" ref={scrollRef}>
             {hasImage ? (
               <div className="canvas-wrapper" style={{ width: image.width * scale, height: image.height * scale }}>
-                <canvas ref={canvasRef} style={{ width: image.width * scale, height: image.height * scale }} />
+                <canvas
+                  ref={canvasRef}
+                  style={{ width: image.width * scale, height: image.height * scale, cursor: activeTool === 'eyedropper' ? 'crosshair' : 'default' }}
+                  onClick={handleCanvasClick}
+                />
               </div>
             ) : (
               <div className="empty-state" onClick={() => fileInputRef.current.click()}>
@@ -256,6 +293,34 @@ export default function App() {
                 activeChannels={activeChannels}
                 onToggle={toggleChannel}
               />
+            </div>
+            <div className="panel-section">
+              <div className="panel-header">Информация</div>
+              {pickedPixel ? (
+                <div className="px-info">
+                  <div className="px-swatch-row">
+                    <span className="px-swatch" style={{ background: `rgb(${pickedPixel.r},${pickedPixel.g},${pickedPixel.b})` }} />
+                    <span className="px-hex">
+                      #{[pickedPixel.r, pickedPixel.g, pickedPixel.b].map(v => v.toString(16).padStart(2, '0')).join('')}
+                    </span>
+                  </div>
+                  <dl className="px-list">
+                    <dt>X</dt><dd>{pickedPixel.x}</dd>
+                    <dt>Y</dt><dd>{pickedPixel.y}</dd>
+                    <dt>R</dt><dd>{pickedPixel.r}</dd>
+                    <dt>G</dt><dd>{pickedPixel.g}</dd>
+                    <dt>B</dt><dd>{pickedPixel.b}</dd>
+                    <dt>A</dt><dd>{pickedPixel.a}</dd>
+                    <dt>L*</dt><dd>{pickedPixel.lab.L}</dd>
+                    <dt>a*</dt><dd>{pickedPixel.lab.a}</dd>
+                    <dt>b*</dt><dd>{pickedPixel.lab.b}</dd>
+                  </dl>
+                </div>
+              ) : (
+                <p className="px-hint">
+                  {activeTool === 'eyedropper' ? 'Кликните по изображению' : 'Выберите инструмент пипетки'}
+                </p>
+              )}
             </div>
           </aside>
         )}

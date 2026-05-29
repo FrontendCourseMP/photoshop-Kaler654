@@ -329,3 +329,57 @@ canvas {
 }
 
 .ch-label { font-size: 11px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Toolbar ── */
+.toolbar {
+  width: 40px;
+  flex-shrink: 0;
+  background: #1e1e1e;
+  border-right: 1px solid #0d0d0d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  gap: 2px;
+}
+
+.tool-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: #545454;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tool-btn svg { width: 18px; height: 18px; }
+.tool-btn:hover { background: #2a2a2a; color: #a0a0a0; }
+.tool-btn.tool-active { background: #2f6eb5; color: #fff; }
+
+/* ── Pixel info ── */
+.px-hint { font-size: 11px; color: #363636; padding: 10px; line-height: 1.6; }
+
+.px-info { padding: 8px 10px; }
+
+.px-swatch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
+.px-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid #2e2e2e;
+  flex-shrink: 0;
+}
+
+.px-hex { font-size: 11px; color: #686868; letter-spacing: 0.3px; }
+
+.px-list {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 1px 8px;
+}
+
+.px-list dt { font-size: 10px; color: #424242; font-weight: 600; letter-spacing: 0.2px; text-align: right; }
+.px-list dd { font-size: 11px; color: #787878; }
