@@ -1,7 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { decodeGB7, encodeGB7 } from './utils/gb7'
 import { snapZoom, calcFitZoom, ZOOM_PRESETS } from './utils/zoom'
+import { getChannelIds, applyChannelMask } from './utils/colorChannels'
+import ChannelsPanel from './components/ChannelsPanel'
 import './App.css'
+
+function extractImageData(bitmap, width, height) {
+  const tmp = document.createElement('canvas')
+  tmp.width = width; tmp.height = height
+  const ctx = tmp.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(bitmap, 0, 0)
+  return ctx.getImageData(0, 0, width, height)
+}
 
 export default function App() {
   const [image, setImage] = useState({
@@ -13,6 +23,7 @@ export default function App() {
   const [zoom, setZoom] = useState(100)
   const [isDragOver, setIsDragOver] = useState(false)
   const [openMenu, setOpenMenu] = useState(null)
+  const [activeChannels, setActiveChannels] = useState(new Set())
 
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -29,14 +40,20 @@ export default function App() {
     const canvas = canvasRef.current
     if (!canvas || !image.bitmap) return
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const w = image.width, h = image.height
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w
-      canvas.height = h
+    canvas.width = image.width
+    canvas.height = image.height
+    if (activeChannels.size === 0) {
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, image.width, image.height)
+      return
     }
-    ctx.clearRect(0, 0, w, h)
+    if (image.data) {
+      const available = getChannelIds(image.colorDepth)
+      const masked = applyChannelMask(image.data, activeChannels, available)
+      if (masked) { ctx.putImageData(masked, 0, 0); return }
+    }
     ctx.drawImage(image.bitmap, 0, 0)
-  }, [image.bitmap, image.width, image.height])
+  }, [image, activeChannels])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -87,6 +104,7 @@ export default function App() {
         const { imageData, colorDepth } = decodeGB7(buffer)
         const bitmap = await createImageBitmap(imageData)
         const fitZoom = calcFitZoom(imageData.width, imageData.height)
+        setActiveChannels(new Set(getChannelIds(colorDepth)))
         setImage({ bitmap, data: imageData, width: imageData.width, height: imageData.height, colorDepth, fileName: file.name })
         setZoom(fitZoom)
       } catch (e) {
@@ -102,25 +120,19 @@ export default function App() {
 
     try {
       const bitmap = await createImageBitmap(file)
+      const { width, height } = bitmap
       const colorDepth = ext === 'jpg' || ext === 'jpeg' ? 24 : 32
-      const fitZoom = calcFitZoom(bitmap.width, bitmap.height)
-      setImage({ bitmap, data: null, width: bitmap.width, height: bitmap.height, colorDepth, fileName: file.name })
+      const fitZoom = calcFitZoom(width, height)
+      setActiveChannels(new Set(getChannelIds(colorDepth)))
+      setImage({ bitmap, data: null, width, height, colorDepth, fileName: file.name })
       setZoom(fitZoom)
     } catch {
       setError('Не удалось декодировать изображение')
     }
   }, [])
 
-  const handleFileInput = (e) => {
-    processFile(e.target.files[0])
-    e.target.value = ''
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    setIsDragOver(false)
-    processFile(e.dataTransfer.files[0])
-  }
+  const handleFileInput = (e) => { processFile(e.target.files[0]); e.target.value = '' }
+  const handleDrop = (e) => { e.preventDefault(); setIsDragOver(false); processFile(e.dataTransfer.files[0]) }
 
   const downloadBlob = (blob, name) => {
     const url = URL.createObjectURL(blob)
@@ -149,18 +161,31 @@ export default function App() {
     setOpenMenu(null)
   }, [image])
 
-  const saveAsGB7 = useCallback(async () => {
+  const saveAsGB7 = useCallback(() => {
     if (!image.bitmap) return
-    let pixels = image.data
-    if (!pixels) {
-      const c = document.createElement('canvas')
-      c.width = image.width; c.height = image.height
-      c.getContext('2d', { willReadFrequently: true }).drawImage(image.bitmap, 0, 0)
-      pixels = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height)
-    }
-    const bytes = encodeGB7(pixels)
-    downloadBlob(new Blob([bytes.buffer], { type: 'application/octet-stream' }), baseName() + '.gb7')
+    const pixels = image.data ?? extractImageData(image.bitmap, image.width, image.height)
+    downloadBlob(new Blob([encodeGB7(pixels).buffer], { type: 'application/octet-stream' }), baseName() + '.gb7')
     setOpenMenu(null)
+  }, [image])
+
+  const toggleChannel = useCallback((channelId) => {
+    const doToggle = () => {
+      if (channelId === 'composite') {
+        const channels = getChannelIds(image.colorDepth)
+        setActiveChannels(prev => new Set(channels.every(ch => prev.has(ch)) ? [] : channels))
+        return
+      }
+      setActiveChannels(prev => {
+        const next = new Set(prev)
+        next.has(channelId) ? next.delete(channelId) : next.add(channelId)
+        return next
+      })
+    }
+    if (!image.data && image.bitmap) {
+      const data = extractImageData(image.bitmap, image.width, image.height)
+      setImage(prev => ({ ...prev, data }))
+    }
+    doToggle()
   }, [image])
 
   const hasImage = !!image.bitmap
@@ -171,7 +196,6 @@ export default function App() {
     <div className="app">
       <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gb7" onChange={handleFileInput} style={{ display: 'none' }} />
 
-      {/* MenuBar */}
       <nav className="menubar">
         <div className="menu-item">
           <button className={`menu-btn${openMenu === 'file' ? ' active' : ''}`} onClick={() => setOpenMenu(v => v === 'file' ? null : 'file')}>
@@ -179,9 +203,7 @@ export default function App() {
           </button>
           {openMenu === 'file' && (
             <div className="dropdown">
-              <button className="dd-item" onClick={() => { fileInputRef.current.click(); setOpenMenu(null) }}>
-                Открыть…
-              </button>
+              <button className="dd-item" onClick={() => { fileInputRef.current.click(); setOpenMenu(null) }}>Открыть…</button>
               <div className="dd-sep" />
               <button className="dd-item" disabled={!hasImage} onClick={saveAsPNG}>Сохранить как PNG</button>
               <button className="dd-item" disabled={!hasImage} onClick={saveAsJPG}>Сохранить как JPG</button>
@@ -191,45 +213,54 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Canvas area */}
-      <div
-        className={`canvas-area${isDragOver ? ' drag-over' : ''}`}
-        onDragOver={e => { e.preventDefault(); setIsDragOver(true) }}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false) }}
-        onDrop={handleDrop}
-      >
-        {error && <div className="error-toast">{error}</div>}
-
-        <div className="canvas-scroll" ref={scrollRef}>
-          {hasImage ? (
-            <div className="canvas-wrapper" style={{ width: image.width * scale, height: image.height * scale }}>
-              <canvas
-                ref={canvasRef}
-                style={{ width: image.width * scale, height: image.height * scale }}
-              />
-            </div>
-          ) : (
-            <div className="empty-state" onClick={() => fileInputRef.current.click()}>
-              <svg className="empty-icon" viewBox="0 0 64 64" fill="none">
-                <rect x="8" y="10" width="48" height="40" rx="2" stroke="#5a5a5a" strokeWidth="1.5"/>
-                <path d="M8 38l14-14 10 10 8-8 16 14" stroke="#5a5a5a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="22" cy="24" r="4" stroke="#5a5a5a" strokeWidth="1.5"/>
-              </svg>
-              <p className="empty-title">Изображение не открыто</p>
-              <p className="empty-hint">Перетащите файл сюда или используйте <strong>Файл → Открыть</strong></p>
-              <p className="empty-formats">PNG · JPG · GB7</p>
-            </div>
+      <div className="workspace">
+        <div
+          className={`canvas-area${isDragOver ? ' drag-over' : ''}`}
+          onDragOver={e => { e.preventDefault(); setIsDragOver(true) }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false) }}
+          onDrop={handleDrop}
+        >
+          {error && <div className="error-toast">{error}</div>}
+          <div className="canvas-scroll" ref={scrollRef}>
+            {hasImage ? (
+              <div className="canvas-wrapper" style={{ width: image.width * scale, height: image.height * scale }}>
+                <canvas ref={canvasRef} style={{ width: image.width * scale, height: image.height * scale }} />
+              </div>
+            ) : (
+              <div className="empty-state" onClick={() => fileInputRef.current.click()}>
+                <svg className="empty-icon" viewBox="0 0 64 64" fill="none">
+                  <rect x="8" y="10" width="48" height="40" rx="2" stroke="#5a5a5a" strokeWidth="1.5"/>
+                  <path d="M8 38l14-14 10 10 8-8 16 14" stroke="#5a5a5a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="22" cy="24" r="4" stroke="#5a5a5a" strokeWidth="1.5"/>
+                </svg>
+                <p className="empty-title">Изображение не открыто</p>
+                <p className="empty-hint">Перетащите файл сюда или используйте <strong>Файл → Открыть</strong></p>
+                <p className="empty-formats">PNG · JPG · GB7</p>
+              </div>
+            )}
+          </div>
+          {isDragOver && (
+            <div className="drop-overlay"><p>Отпустите для открытия</p></div>
           )}
         </div>
 
-        {isDragOver && (
-          <div className="drop-overlay">
-            <p>Отпустите для открытия</p>
-          </div>
+        {hasImage && (
+          <aside className="right-panel">
+            <div className="panel-section">
+              <div className="panel-header">Каналы</div>
+              <ChannelsPanel
+                bitmap={image.bitmap}
+                width={image.width}
+                height={image.height}
+                colorDepth={image.colorDepth}
+                activeChannels={activeChannels}
+                onToggle={toggleChannel}
+              />
+            </div>
+          </aside>
         )}
       </div>
 
-      {/* StatusBar */}
       <footer className="statusbar">
         <div className="status-left">
           {hasImage ? (
@@ -245,11 +276,7 @@ export default function App() {
           )}
         </div>
         <div className="status-right">
-          <select
-            className="zoom-select"
-            value={zoom}
-            onChange={e => setZoom(Number(e.target.value))}
-          >
+          <select className="zoom-select" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
             {zoomOptions.map(z => <option key={z} value={z}>{z}%</option>)}
           </select>
         </div>
