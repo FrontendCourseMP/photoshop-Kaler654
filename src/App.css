@@ -104,6 +104,13 @@ button:disabled { cursor: default; }
 
 .dd-sep { height: 1px; background: #2a2a2a; margin: 3px 0; }
 
+/* ── Workspace ── */
+.workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
 /* ── Canvas area ── */
 .canvas-area {
   flex: 1;
@@ -245,3 +252,80 @@ canvas {
 }
 
 .zoom-select:focus { outline: none; border-color: #2f6eb5; }
+
+/* ── Right panel ── */
+.right-panel {
+  width: 216px;
+  flex-shrink: 0;
+  background: #1e1e1e;
+  border-left: 1px solid #0d0d0d;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-section { border-bottom: 1px solid #111; }
+
+.panel-header {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #484848;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  background: #181818;
+  border-bottom: 1px solid #111;
+}
+
+/* ── Channels panel ── */
+.channels-panel { display: flex; flex-direction: column; }
+
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #0e0e0e;
+  transition: background 0.1s;
+  color: #2e2e2e;
+}
+
+.ch-row:last-child { border-bottom: none; }
+.ch-row:hover { background: #252525; }
+.ch-active { color: #c0c0c0; }
+.ch-row:not(.ch-active) .ch-thumb-wrap { opacity: 0.35; }
+
+.ch-active.ch-red .ch-thumb-wrap { outline: 1px solid #7a3030; }
+.ch-active.ch-green .ch-thumb-wrap { outline: 1px solid #2e6032; }
+.ch-active.ch-blue .ch-thumb-wrap { outline: 1px solid #28508a; }
+
+.ch-eye { width: 16px; height: 12px; flex-shrink: 0; }
+
+.ch-thumb-wrap {
+  width: 48px;
+  flex-shrink: 0;
+  line-height: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c8c8 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c8c8 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+}
+
+.ch-thumb {
+  display: block;
+  width: 48px;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.ch-label { font-size: 11px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
