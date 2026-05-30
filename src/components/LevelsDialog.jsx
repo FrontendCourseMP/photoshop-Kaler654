@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { defaultLevels, computeHistogram, drawHistogram, applyLevels } from '../utils/levels'
+import { LevelsPreviewWorker } from '../utils/levelsPreviewWorker'
 import './LevelsDialog.css'
 
 const CHANNELS = ['master', 'r', 'g', 'b', 'a']
@@ -20,6 +21,7 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
   const [applying, setApplying] = useState(false)
   const histRef = useRef(null)
   const rafRef = useRef(null)
+  const workerRef = useRef(null)
 
   const [pos, setPos] = useState(() => ({
     x: Math.round(window.innerWidth / 2 - 190),
@@ -53,24 +55,39 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
   }, [isOpen, imageData, channel, isLog])
 
   useEffect(() => {
+    if (!isOpen || !imageData) {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      return
+    }
+    workerRef.current = new LevelsPreviewWorker(imageData)
+    return () => {
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
+  }, [isOpen, imageData])
+
+  useEffect(() => {
     if (!isOpen || !imageData || !canvasRef.current) return
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    rafRef.current = requestAnimationFrame(() => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      const isDefault = CHANNELS.every(ch =>
-        levels[ch].black === 0 && levels[ch].white === 255 && levels[ch].gamma === 1
-      )
-      if (!preview || isDefault) {
-        ctx.putImageData(imageData, 0, 0)
-        return
-      }
-      const result = applyLevels(imageData, levels)
-      ctx.putImageData(result, 0, 0)
+    const isDefault = CHANNELS.every(ch =>
+      levels[ch].black === 0 && levels[ch].white === 255 && levels[ch].gamma === 1
+    )
+    const canvas = canvasRef.current
+    if (!preview || isDefault) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        canvas.getContext('2d')?.putImageData(imageData, 0, 0)
+      })
+      return
+    }
+    const worker = workerRef.current
+    if (!worker) return
+    void worker.compute(levels).then(result => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        canvas.getContext('2d')?.putImageData(result, 0, 0)
+      })
     })
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   }, [isOpen, imageData, levels, preview, canvasRef])
 
   const updateLevel = useCallback((key, value) => {
