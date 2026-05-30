@@ -4,6 +4,7 @@ import { snapZoom, calcFitZoom, ZOOM_PRESETS } from './utils/zoom'
 import { getChannelIds, applyChannelMask } from './utils/colorChannels'
 import { rgbToLab } from './utils/colorConvert'
 import ChannelsPanel from './components/ChannelsPanel'
+import LevelsDialog from './components/LevelsDialog'
 import './App.css'
 
 function extractImageData(bitmap, width, height) {
@@ -27,6 +28,8 @@ export default function App() {
   const [activeChannels, setActiveChannels] = useState(new Set())
   const [activeTool, setActiveTool] = useState(null)
   const [pickedPixel, setPickedPixel] = useState(null)
+  const [levelsOpen, setLevelsOpen] = useState(false)
+  const imageBeforeLevels = useRef(null)
 
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -148,6 +151,40 @@ export default function App() {
 
   const baseName = () => (image.fileName?.replace(/\.[^.]+$/, '') ?? 'image')
 
+  const getImageData = useCallback(() => {
+    if (image.data) return image.data
+    if (!image.bitmap) return null
+    const tmp = document.createElement('canvas')
+    tmp.width = image.width; tmp.height = image.height
+    tmp.getContext('2d', { willReadFrequently: true }).drawImage(image.bitmap, 0, 0)
+    const data = tmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, image.width, image.height)
+    setImage(prev => ({ ...prev, data }))
+    return data
+  }, [image])
+
+  const openLevels = useCallback(() => {
+    if (!image.bitmap) return
+    const data = getImageData()
+    imageBeforeLevels.current = data
+    setLevelsOpen(true)
+    setOpenMenu(null)
+  }, [image, getImageData])
+
+  const handleLevelsApply = useCallback(async (resultImageData) => {
+    const bitmap = await createImageBitmap(resultImageData)
+    setImage(prev => ({ ...prev, bitmap, data: resultImageData }))
+    imageBeforeLevels.current = null
+    setLevelsOpen(false)
+  }, [])
+
+  const handleLevelsCancel = useCallback(() => {
+    if (imageBeforeLevels.current && canvasRef.current) {
+      canvasRef.current.getContext('2d').putImageData(imageBeforeLevels.current, 0, 0)
+    }
+    imageBeforeLevels.current = null
+    setLevelsOpen(false)
+  }, [])
+
   const saveAsPNG = useCallback(() => {
     if (!image.bitmap) return
     const c = document.createElement('canvas')
@@ -227,6 +264,16 @@ export default function App() {
               <button className="dd-item" disabled={!hasImage} onClick={saveAsPNG}>Сохранить как PNG</button>
               <button className="dd-item" disabled={!hasImage} onClick={saveAsJPG}>Сохранить как JPG</button>
               <button className="dd-item" disabled={!hasImage} onClick={saveAsGB7}>Сохранить как GB7</button>
+            </div>
+          )}
+        </div>
+        <div className="menu-item">
+          <button className={`menu-btn${openMenu === 'image' ? ' active' : ''}`} onClick={() => setOpenMenu(v => v === 'image' ? null : 'image')}>
+            Изображение
+          </button>
+          {openMenu === 'image' && (
+            <div className="dropdown">
+              <button className="dd-item" disabled={!hasImage} onClick={openLevels}>Уровни…</button>
             </div>
           )}
         </div>
@@ -325,6 +372,15 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      <LevelsDialog
+        isOpen={levelsOpen}
+        imageData={imageBeforeLevels.current}
+        colorDepth={image.colorDepth}
+        canvasRef={canvasRef}
+        onApply={handleLevelsApply}
+        onCancel={handleLevelsCancel}
+      />
 
       <footer className="statusbar">
         <div className="status-left">
