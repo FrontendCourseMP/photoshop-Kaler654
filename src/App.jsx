@@ -5,6 +5,7 @@ import { getChannelIds, applyChannelMask } from './utils/colorChannels'
 import { rgbToLab } from './utils/colorConvert'
 import ChannelsPanel from './components/ChannelsPanel'
 import LevelsDialog from './components/LevelsDialog'
+import ResizeDialog from './components/ResizeDialog'
 import './App.css'
 
 function extractImageData(bitmap, width, height) {
@@ -30,6 +31,7 @@ export default function App() {
   const [pickedPixel, setPickedPixel] = useState(null)
   const [levelsOpen, setLevelsOpen] = useState(false)
   const imageBeforeLevels = useRef(null)
+  const [resizeOpen, setResizeOpen] = useState(false)
 
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -177,6 +179,22 @@ export default function App() {
     setLevelsOpen(false)
   }, [])
 
+  const openResize = useCallback(() => {
+    if (!image.bitmap) return
+    const data = getImageData()
+    if (!data) return
+    setResizeOpen(true)
+    setOpenMenu(null)
+  }, [image, getImageData])
+
+  const handleResizeApply = useCallback(async (resultImageData) => {
+    const bitmap = await createImageBitmap(resultImageData)
+    const fitZoom = calcFitZoom(resultImageData.width, resultImageData.height)
+    setImage(prev => ({ ...prev, bitmap, data: resultImageData, width: resultImageData.width, height: resultImageData.height }))
+    setZoom(fitZoom)
+    setResizeOpen(false)
+  }, [])
+
   const handleLevelsCancel = useCallback(() => {
     if (imageBeforeLevels.current && canvasRef.current) {
       canvasRef.current.getContext('2d').putImageData(imageBeforeLevels.current, 0, 0)
@@ -274,6 +292,7 @@ export default function App() {
           {openMenu === 'image' && (
             <div className="dropdown">
               <button className="dd-item" disabled={!hasImage} onClick={openLevels}>Уровни…</button>
+              <button className="dd-item" disabled={!hasImage} onClick={openResize}>Размер изображения…</button>
             </div>
           )}
         </div>
@@ -372,6 +391,13 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      <ResizeDialog
+        isOpen={resizeOpen}
+        imageData={resizeOpen ? (image.data ?? null) : null}
+        onApply={handleResizeApply}
+        onCancel={() => setResizeOpen(false)}
+      />
 
       <LevelsDialog
         isOpen={levelsOpen}
