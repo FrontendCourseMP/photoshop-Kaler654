@@ -6,6 +6,7 @@ import { rgbToLab } from './utils/colorConvert'
 import ChannelsPanel from './components/ChannelsPanel'
 import LevelsDialog from './components/LevelsDialog'
 import ResizeDialog from './components/ResizeDialog'
+import KernelDialog from './components/KernelDialog'
 import './App.css'
 
 function extractImageData(bitmap, width, height) {
@@ -32,6 +33,8 @@ export default function App() {
   const [levelsOpen, setLevelsOpen] = useState(false)
   const imageBeforeLevels = useRef(null)
   const [resizeOpen, setResizeOpen] = useState(false)
+  const [kernelOpen, setKernelOpen] = useState(false)
+  const kernelImageData = useRef(null)
 
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -195,6 +198,28 @@ export default function App() {
     setResizeOpen(false)
   }, [])
 
+  const openKernel = useCallback(() => {
+    if (!image.bitmap) return
+    kernelImageData.current = getImageData()
+    setKernelOpen(true)
+    setOpenMenu(null)
+  }, [image, getImageData])
+
+  const handleKernelApply = useCallback(async (resultImageData) => {
+    const bitmap = await createImageBitmap(resultImageData)
+    setImage(prev => ({ ...prev, bitmap, data: resultImageData }))
+    kernelImageData.current = null
+    setKernelOpen(false)
+  }, [])
+
+  const handleKernelCancel = useCallback(() => {
+    if (kernelImageData.current && canvasRef.current) {
+      canvasRef.current.getContext('2d').putImageData(kernelImageData.current, 0, 0)
+    }
+    kernelImageData.current = null
+    setKernelOpen(false)
+  }, [])
+
   const handleLevelsCancel = useCallback(() => {
     if (imageBeforeLevels.current && canvasRef.current) {
       canvasRef.current.getContext('2d').putImageData(imageBeforeLevels.current, 0, 0)
@@ -282,6 +307,16 @@ export default function App() {
               <button className="dd-item" disabled={!hasImage} onClick={saveAsPNG}>Сохранить как PNG</button>
               <button className="dd-item" disabled={!hasImage} onClick={saveAsJPG}>Сохранить как JPG</button>
               <button className="dd-item" disabled={!hasImage} onClick={saveAsGB7}>Сохранить как GB7</button>
+            </div>
+          )}
+        </div>
+        <div className="menu-item">
+          <button className={`menu-btn${openMenu === 'filters' ? ' active' : ''}`} onClick={() => setOpenMenu(v => v === 'filters' ? null : 'filters')}>
+            Фильтры
+          </button>
+          {openMenu === 'filters' && (
+            <div className="dropdown">
+              <button className="dd-item" disabled={!hasImage} onClick={openKernel}>Фильтр ядра…</button>
             </div>
           )}
         </div>
@@ -391,6 +426,15 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      <KernelDialog
+        isOpen={kernelOpen}
+        imageData={kernelImageData.current}
+        colorDepth={image.colorDepth}
+        canvasRef={canvasRef}
+        onApply={handleKernelApply}
+        onCancel={handleKernelCancel}
+      />
 
       <ResizeDialog
         isOpen={resizeOpen}
