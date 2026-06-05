@@ -42,9 +42,10 @@ export default function ResizeDialog({ isOpen, imageData, onApply, onCancel }) {
 
   const computeDims = () => {
     if (mode === 'percent') {
-      const p = Number(wVal)
-      if (!Number.isFinite(p) || p < PCT_MIN || p > PCT_MAX) return null
-      return { w: Math.max(1, Math.round(origW * p / 100)), h: Math.max(1, Math.round(origH * p / 100)) }
+      const pw = Number(wVal), ph = Number(hVal)
+      if (!Number.isFinite(pw) || pw < PCT_MIN || pw > PCT_MAX) return null
+      if (!Number.isFinite(ph) || ph < PCT_MIN || ph > PCT_MAX) return null
+      return { w: Math.max(1, Math.round(origW * pw / 100)), h: Math.max(1, Math.round(origH * ph / 100)) }
     }
     const w = Number(wVal), h = Number(hVal)
     if (!Number.isInteger(w) || w < PX_MIN || w > PX_MAX) return null
@@ -59,8 +60,9 @@ export default function ResizeDialog({ isOpen, imageData, onApply, onCancel }) {
       setWVal(String(dims?.w ?? origW))
       setHVal(String(dims?.h ?? origH))
     } else {
-      const pct = dims ? Math.round(dims.w / origW * 100) : 100
-      setWVal(String(pct)); setHVal(String(pct))
+      const pctW = dims ? Math.round(dims.w / origW * 100) : 100
+      const pctH = dims ? Math.round(dims.h / origH * 100) : 100
+      setWVal(String(pctW)); setHVal(String(pctH))
     }
     setWErr(undefined); setHErr(undefined); setMode(next)
   }
@@ -77,20 +79,20 @@ export default function ResizeDialog({ isOpen, imageData, onApply, onCancel }) {
   }
 
   const handleH = (val) => {
-    if (mode === 'percent') return
     setHVal(val)
-    const err = validatePx(val)
+    const err = mode === 'percent' ? validatePct(val) : validatePx(val)
     setHErr(err)
     if (!err && lock) {
-      setWVal(String(Math.max(1, Math.round(Number(val) * aspect))))
-      setWErr(undefined)
+      const n = Number(val)
+      if (mode === 'percent') { setWVal(val); setWErr(undefined) }
+      else { setWVal(String(Math.max(1, Math.round(n * aspect)))); setWErr(undefined) }
     }
   }
 
   const handleApply = async () => {
     if (!imageData) return
     const we = mode === 'percent' ? validatePct(wVal) : validatePx(wVal)
-    const he = mode === 'pixels' ? validatePx(hVal) : undefined
+    const he = mode === 'percent' ? validatePct(hVal) : validatePx(hVal)
     setWErr(we); setHErr(he)
     if (we || he) return
     const dims = computeDims()
@@ -157,7 +159,7 @@ export default function ResizeDialog({ isOpen, imageData, onApply, onCancel }) {
               max={PX_MAX}
               step={1}
               onChange={e => handleH(e.target.value)}
-              disabled={applying || mode === 'percent'}
+              disabled={applying}
             />
             {hErr && <span className="rs-err">{hErr}</span>}
           </div>
@@ -168,7 +170,7 @@ export default function ResizeDialog({ isOpen, imageData, onApply, onCancel }) {
             type="checkbox"
             checked={lock}
             onChange={e => setLock(e.target.checked)}
-            disabled={applying || mode === 'percent'}
+            disabled={applying}
           />
           Сохранять пропорции
         </label>

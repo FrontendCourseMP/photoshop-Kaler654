@@ -43,6 +43,7 @@ export function computeHistogram(imageData, channel) {
     const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3]
     let value
     if (channel === 'master') value = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+    else if (channel === 'gray') value = r
     else if (channel === 'r') value = r
     else if (channel === 'g') value = g
     else if (channel === 'b') value = b

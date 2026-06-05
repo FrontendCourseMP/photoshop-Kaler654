@@ -4,21 +4,32 @@ import { KernelPreviewWorker, applyKernelInWorker } from '../utils/convolutionWo
 import './KernelDialog.css'
 
 const ALL_CHANNELS = ['r', 'g', 'b', 'a']
-const CHANNEL_LABELS = { r: 'R', g: 'G', b: 'B', a: 'A' }
+const CHANNEL_LABELS = { gray: 'Серый', r: 'R', g: 'G', b: 'B', a: 'A' }
 const EDGE_LABELS = { black: 'Чёрный', white: 'Белый', copy: 'Копирование' }
 
 function getAvailableChannels(colorDepth) {
-  if (!colorDepth || colorDepth <= 8) return ['r']
-  if (colorDepth <= 16) return ['r', 'a']
-  if (colorDepth <= 24) return ['r', 'g', 'b']
-  return ALL_CHANNELS
+  if (!colorDepth) return ['r', 'g', 'b']
+  if (colorDepth === 7) return ['gray']
+  if (colorDepth === 8) return ['gray', 'a']
+  if (colorDepth === 32) return ALL_CHANNELS
+  return ['r', 'g', 'b']
+}
+
+// GB7 'gray' maps to all three rgb channels in the worker
+function expandChannels(channels) {
+  const out = []
+  for (const c of channels) {
+    if (c === 'gray') out.push('r', 'g', 'b')
+    else out.push(c)
+  }
+  return out
 }
 
 const DEFAULT_KERNEL = [...KERNEL_PRESETS[0].values]
 
 export default function KernelDialog({ isOpen, imageData, colorDepth, canvasRef, onApply, onCancel }) {
   const [kernel, setKernel] = useState(DEFAULT_KERNEL)
-  const [selectedChannels, setSelectedChannels] = useState(new Set(['r', 'g', 'b']))
+  const [selectedChannels, setSelectedChannels] = useState(new Set(getAvailableChannels(colorDepth)))
   const [edge, setEdge] = useState('black')
   const [previewEnabled, setPreviewEnabled] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
@@ -39,6 +50,9 @@ export default function KernelDialog({ isOpen, imageData, colorDepth, canvasRef,
       workerRef.current = null
       return
     }
+    setSelectedChannels(new Set(getAvailableChannels(colorDepth)))
+    setKernel(DEFAULT_KERNEL); setPresetIndex(0); setEdge('black')
+    setPreviewEnabled(false); setIsApplying(false)
     if (imageData) {
       workerRef.current?.terminate()
       workerRef.current = new KernelPreviewWorker(imageData)
@@ -54,8 +68,9 @@ export default function KernelDialog({ isOpen, imageData, colorDepth, canvasRef,
 
   const triggerPreview = useCallback((k, chans, e) => {
     if (!workerRef.current || !canvasRef.current) return
-    const channels = ALL_CHANNELS.filter(c => chans.has(c) && availableChannels.includes(c))
-    if (channels.length === 0) return
+    const selected = availableChannels.filter(c => chans.has(c))
+    if (selected.length === 0) return
+    const channels = expandChannels(selected)
     workerRef.current.compute(k, channels, e).then(result => {
       const ctx = canvasRef.current?.getContext('2d', { willReadFrequently: true })
       if (!ctx) return
@@ -114,15 +129,17 @@ export default function KernelDialog({ isOpen, imageData, colorDepth, canvasRef,
 
   const handleReset = () => {
     const next = [...KERNEL_PRESETS[0].values]
+    const defaultChans = new Set(availableChannels)
     setKernel(next); setPresetIndex(0)
-    setSelectedChannels(new Set(['r', 'g', 'b'])); setEdge('black')
-    if (previewEnabled) triggerPreview(next, new Set(['r', 'g', 'b']), 'black')
+    setSelectedChannels(defaultChans); setEdge('black')
+    if (previewEnabled) triggerPreview(next, defaultChans, 'black')
   }
 
   const handleApply = async () => {
     if (!imageData) return
-    const channels = ALL_CHANNELS.filter(c => selectedChannels.has(c) && availableChannels.includes(c))
-    if (channels.length === 0) return
+    const selected = availableChannels.filter(c => selectedChannels.has(c))
+    if (selected.length === 0) return
+    const channels = expandChannels(selected)
     setIsApplying(true)
     try {
       const result = await applyKernelInWorker(imageData, kernel, channels, edge)

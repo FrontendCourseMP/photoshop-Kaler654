@@ -4,11 +4,12 @@ import { LevelsPreviewWorker } from '../utils/levelsPreviewWorker'
 import './LevelsDialog.css'
 
 const CHANNELS = ['master', 'r', 'g', 'b', 'a']
-const CHANNEL_LABELS = { master: 'Master (RGB)', r: 'Red', g: 'Green', b: 'Blue', a: 'Alpha' }
+const CHANNEL_LABELS = { master: 'Совмещённый', gray: 'Серый', r: 'Red', g: 'Green', b: 'Blue', a: 'Alpha' }
 
 function getAvailableChannels(colorDepth) {
-  if (!colorDepth || colorDepth <= 8) return ['master']
-  if (colorDepth <= 16) return ['master', 'a']
+  if (!colorDepth) return ['master', 'r', 'g', 'b']
+  if (colorDepth === 7) return ['gray']
+  if (colorDepth === 8) return ['gray', 'a']
   if (colorDepth <= 24) return ['master', 'r', 'g', 'b']
   return CHANNELS
 }
@@ -29,11 +30,11 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
   }))
   const dragStart = useRef(null)
 
-  const cur = levels[channel]
+  const cur = levels[channel === 'gray' ? 'master' : channel]
 
   useEffect(() => {
     if (!isOpen) return
-    setChannel('master')
+    setChannel(getAvailableChannels(colorDepth)[0])
     setLevels(defaultLevels)
     setIsLog(false)
     setPreview(true)
@@ -92,12 +93,13 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
 
   const updateLevel = useCallback((key, value) => {
     setLevels(prev => {
-      const src = channel === 'master' ? prev.master : prev[channel]
+      const isGray = channel === 'gray'
+      const src = (channel === 'master' || isGray) ? prev.master : prev[channel]
       let clamped = value
       if (key === 'black') clamped = Math.min(value, src.white - 1)
       if (key === 'white') clamped = Math.max(value, src.black + 1)
       const updated = { ...src, [key]: clamped }
-      if (channel === 'master') {
+      if (channel === 'master' || isGray) {
         return { ...prev, master: updated, r: updated, g: updated, b: updated }
       }
       return { ...prev, [channel]: updated }

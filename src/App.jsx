@@ -320,17 +320,8 @@ export default function App() {
             </div>
           )}
         </div>
-        <div className="menu-item">
-          <button className={`menu-btn${openMenu === 'image' ? ' active' : ''}`} onClick={() => setOpenMenu(v => v === 'image' ? null : 'image')}>
-            Изображение
-          </button>
-          {openMenu === 'image' && (
-            <div className="dropdown">
-              <button className="dd-item" disabled={!hasImage} onClick={openLevels}>Уровни…</button>
-              <button className="dd-item" disabled={!hasImage} onClick={openResize}>Размер изображения…</button>
-            </div>
-          )}
-        </div>
+        <button className="menu-btn" disabled={!hasImage} onClick={() => { openLevels(); setOpenMenu(null) }}>Уровни…</button>
+        <button className="menu-btn" disabled={!hasImage} onClick={() => { openResize(); setOpenMenu(null) }}>Размер изображения…</button>
       </nav>
 
       <div className="workspace">
