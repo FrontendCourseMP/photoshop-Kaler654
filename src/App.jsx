@@ -405,9 +405,11 @@ export default function App() {
                       #{[pickedPixel.r, pickedPixel.g, pickedPixel.b].map(v => v.toString(16).padStart(2, '0')).join('')}
                     </span>
                   </div>
+                  <div className="px-coords">
+                    <div className="px-coord-item"><span className="px-coord-label">X</span>{pickedPixel.x}</div>
+                    <div className="px-coord-item"><span className="px-coord-label">Y</span>{pickedPixel.y}</div>
+                  </div>
                   <dl className="px-list">
-                    <dt>X</dt><dd>{pickedPixel.x}</dd>
-                    <dt>Y</dt><dd>{pickedPixel.y}</dd>
                     <dt>R</dt><dd>{pickedPixel.r}</dd>
                     <dt>G</dt><dd>{pickedPixel.g}</dd>
                     <dt>B</dt><dd>{pickedPixel.b}</dd>

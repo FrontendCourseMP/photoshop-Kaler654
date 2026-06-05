@@ -375,6 +375,28 @@ canvas {
 
 .px-hex { font-size: 11px; color: #686868; letter-spacing: 0.3px; }
 
+.px-coords {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 4px;
+  margin-bottom: 4px;
+}
+
+.px-coord-item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11px;
+  color: #787878;
+}
+
+.px-coord-label {
+  font-size: 10px;
+  color: #424242;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
 .px-list {
   display: grid;
   grid-template-columns: 20px 1fr;
