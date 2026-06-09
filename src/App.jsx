@@ -133,11 +133,12 @@ export default function App() {
     try {
       const bitmap = await createImageBitmap(file)
       const { width, height } = bitmap
+      const imgData = extractImageData(bitmap, width, height)
       const colorDepth = ext === 'jpg' || ext === 'jpeg' ? 24 : 32
       const fitZoom = calcFitZoom(width, height)
       setActiveChannels(new Set(getChannelIds(colorDepth)))
       setPickedPixel(null)
-      setImage({ bitmap, data: null, width, height, colorDepth, fileName: file.name })
+      setImage({ bitmap, data: imgData, width, height, colorDepth, fileName: file.name })
       setZoom(fitZoom)
     } catch {
       setError('Не удалось декодировать изображение')
@@ -379,6 +380,7 @@ export default function App() {
               <div className="panel-header">Каналы</div>
               <ChannelsPanel
                 bitmap={image.bitmap}
+                imageData={image.data}
                 width={image.width}
                 height={image.height}
                 colorDepth={image.colorDepth}

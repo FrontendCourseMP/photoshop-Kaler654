@@ -19,11 +19,18 @@ export function makeLUT(black, gamma, white) {
   return lut
 }
 
+function composeLUTs(first, second) {
+  const out = new Uint8ClampedArray(256)
+  for (let i = 0; i < 256; i++) out[i] = second[first[i]]
+  return out
+}
+
 export function applyLevels(imageData, levels) {
   const out = new ImageData(imageData.width, imageData.height)
-  const lutR = makeLUT(levels.r.black, levels.r.gamma, levels.r.white)
-  const lutG = makeLUT(levels.g.black, levels.g.gamma, levels.g.white)
-  const lutB = makeLUT(levels.b.black, levels.b.gamma, levels.b.white)
+  const lutM = makeLUT(levels.master.black, levels.master.gamma, levels.master.white)
+  const lutR = composeLUTs(lutM, makeLUT(levels.r.black, levels.r.gamma, levels.r.white))
+  const lutG = composeLUTs(lutM, makeLUT(levels.g.black, levels.g.gamma, levels.g.white))
+  const lutB = composeLUTs(lutM, makeLUT(levels.b.black, levels.b.gamma, levels.b.white))
   const lutA = makeLUT(levels.a.black, levels.a.gamma, levels.a.white)
   const s = imageData.data
   const d = out.data

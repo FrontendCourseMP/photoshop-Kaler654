@@ -93,16 +93,13 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
 
   const updateLevel = useCallback((key, value) => {
     setLevels(prev => {
-      const isGray = channel === 'gray'
-      const src = (channel === 'master' || isGray) ? prev.master : prev[channel]
+      const chKey = (channel === 'master' || channel === 'gray') ? 'master' : channel
+      const src = prev[chKey]
       let clamped = value
       if (key === 'black') clamped = Math.min(value, src.white - 1)
       if (key === 'white') clamped = Math.max(value, src.black + 1)
       const updated = { ...src, [key]: clamped }
-      if (channel === 'master' || isGray) {
-        return { ...prev, master: updated, r: updated, g: updated, b: updated }
-      }
-      return { ...prev, [channel]: updated }
+      return { ...prev, [chKey]: updated }
     })
   }, [channel])
 
@@ -112,10 +109,12 @@ export default function LevelsDialog({ isOpen, imageData, colorDepth, canvasRef,
     setPreview(true)
   }
 
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!imageData || applying) return
     setApplying(true)
-    const result = applyLevels(imageData, levels)
+    const result = workerRef.current
+      ? await workerRef.current.compute(levels)
+      : applyLevels(imageData, levels)
     onApply(result)
   }
 

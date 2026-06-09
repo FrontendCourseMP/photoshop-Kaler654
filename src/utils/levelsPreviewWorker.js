@@ -24,10 +24,19 @@ const WORKER_CODE = `
     } else if (data.type === 'compute') {
       if (!src) return;
       const { levels, gen } = data;
-      const lutR = makeLUT(levels.r.black, levels.r.gamma, levels.r.white);
-      const lutG = makeLUT(levels.g.black, levels.g.gamma, levels.g.white);
-      const lutB = makeLUT(levels.b.black, levels.b.gamma, levels.b.white);
+      const lutM = makeLUT(levels.master.black, levels.master.gamma, levels.master.white);
+      const lutR_raw = makeLUT(levels.r.black, levels.r.gamma, levels.r.white);
+      const lutG_raw = makeLUT(levels.g.black, levels.g.gamma, levels.g.white);
+      const lutB_raw = makeLUT(levels.b.black, levels.b.gamma, levels.b.white);
       const lutA = makeLUT(levels.a.black, levels.a.gamma, levels.a.white);
+      const lutR = new Uint8ClampedArray(256);
+      const lutG = new Uint8ClampedArray(256);
+      const lutB = new Uint8ClampedArray(256);
+      for (let i = 0; i < 256; i++) {
+        lutR[i] = lutR_raw[lutM[i]];
+        lutG[i] = lutG_raw[lutM[i]];
+        lutB[i] = lutB_raw[lutM[i]];
+      }
       const dst = new Uint8ClampedArray(src.length);
       for (let i = 0; i < src.length; i += 4) {
         dst[i]   = lutR[src[i]];

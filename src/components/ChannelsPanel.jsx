@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { getChannelIds, extractChannelPreview } from '../utils/colorChannels'
+import { getChannelIds, extractChannelPreview, scaleImageData } from '../utils/colorChannels'
 
 const CHANNEL_LABELS = {
   red: 'Красный',
@@ -11,7 +11,7 @@ const CHANNEL_LABELS = {
 
 const THUMB_W = 48
 
-function ChannelThumbnail({ bitmap, channelId, width, height }) {
+function ChannelThumbnail({ bitmap, imageData, channelId, width, height }) {
   const canvasRef = useRef(null)
   useEffect(() => {
     const canvas = canvasRef.current
@@ -21,12 +21,18 @@ function ChannelThumbnail({ bitmap, channelId, width, height }) {
     canvas.height = thumbH
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.imageSmoothingEnabled = true
-    ctx.drawImage(bitmap, 0, 0, THUMB_W, thumbH)
-    if (channelId !== 'composite') {
-      const thumbData = ctx.getImageData(0, 0, THUMB_W, thumbH)
-      ctx.putImageData(extractChannelPreview(thumbData, channelId), 0, 0)
+    if (imageData) {
+      const scaled = scaleImageData(imageData, THUMB_W, thumbH)
+      const preview = channelId === 'composite' ? scaled : extractChannelPreview(scaled, channelId)
+      ctx.putImageData(preview, 0, 0)
+    } else {
+      ctx.drawImage(bitmap, 0, 0, THUMB_W, thumbH)
+      if (channelId !== 'composite') {
+        const thumbData = ctx.getImageData(0, 0, THUMB_W, thumbH)
+        ctx.putImageData(extractChannelPreview(thumbData, channelId), 0, 0)
+      }
     }
-  }, [bitmap, channelId, width, height])
+  }, [bitmap, imageData, channelId, width, height])
   return <canvas ref={canvasRef} className="ch-thumb" />
 }
 
@@ -48,7 +54,7 @@ function EyeIcon({ visible }) {
   )
 }
 
-export default function ChannelsPanel({ bitmap, width, height, colorDepth, activeChannels, onToggle }) {
+export default function ChannelsPanel({ bitmap, imageData, width, height, colorDepth, activeChannels, onToggle }) {
   const channelIds = getChannelIds(colorDepth)
   const hasComposite = channelIds.length > 1
   const allActive = channelIds.every(ch => activeChannels.has(ch))
@@ -63,7 +69,7 @@ export default function ChannelsPanel({ bitmap, width, height, colorDepth, activ
         >
           <EyeIcon visible={allActive} />
           <div className="ch-thumb-wrap">
-            <ChannelThumbnail bitmap={bitmap} channelId="composite" width={width} height={height} />
+            <ChannelThumbnail bitmap={bitmap} imageData={imageData} channelId="composite" width={width} height={height} />
           </div>
           <span className="ch-label">Совмещённый</span>
         </div>
@@ -76,7 +82,7 @@ export default function ChannelsPanel({ bitmap, width, height, colorDepth, activ
         >
           <EyeIcon visible={activeChannels.has(ch)} />
           <div className="ch-thumb-wrap">
-            <ChannelThumbnail bitmap={bitmap} channelId={ch} width={width} height={height} />
+            <ChannelThumbnail bitmap={bitmap} imageData={imageData} channelId={ch} width={width} height={height} />
           </div>
           <span className="ch-label">{CHANNEL_LABELS[ch]}</span>
         </div>
